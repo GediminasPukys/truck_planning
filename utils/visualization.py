@@ -35,9 +35,16 @@ def create_map(trucks_df, cargo_df, route_chains):
     deliveries_group = folium.FeatureGroup(name='Delivery Points')
     rest_stops_group = folium.FeatureGroup(name='Rest Stops')
     routes_group = folium.FeatureGroup(name='Routes')
+    unassigned_group = folium.FeatureGroup(name='Unassigned Cargo')
 
     # Define colors for trucks
     colors = ['blue', 'green', 'red', 'purple', 'orange', 'darkred', 'darkblue', 'darkgreen']
+
+    # Keep track of assigned cargo
+    assigned_cargo_indices = set()
+    for _, chain in route_chains.items():
+        for route in chain:
+            assigned_cargo_indices.add(route['cargo'].name)
 
     # Add data to map
     for truck_idx, route_chain in route_chains.items():
@@ -148,12 +155,56 @@ def create_map(trucks_df, cargo_df, route_chains):
             # Update current position for next route
             current_pos = delivery_coords
 
+    # Add unassigned cargo to the map
+    for idx, cargo in cargo_df.iterrows():
+        if idx not in assigned_cargo_indices:
+            # Create popup for unassigned cargo
+            unassigned_popup = f"""
+                <div style='min-width: 200px'>
+                    <h4>Unassigned Cargo</h4>
+                    <b>Type:</b> {cargo['Cargo_Type']}<br>
+                    <b>Origin:</b> {cargo['Origin']}<br>
+                    <b>Destination:</b> {cargo['Delivery_Location']}<br>
+                    <b>Available:</b> {pd.to_datetime(cargo['Available_From']).strftime('%Y-%m-%d %H:%M')} to 
+                                    {pd.to_datetime(cargo['Available_To']).strftime('%Y-%m-%d %H:%M')}
+                </div>
+            """
+
+            # Add marker at origin
+            folium.Marker(
+                [cargo['Origin_Latitude'], cargo['Origin_Longitude']],
+                popup=unassigned_popup,
+                icon=folium.Icon(color='gray', icon='circle', prefix='fa'),
+                tooltip=f"Unassigned: {cargo['Cargo_Type']}"
+            ).add_to(unassigned_group)
+
+            # Add small line to show destination
+            folium.PolyLine(
+                [(cargo['Origin_Latitude'], cargo['Origin_Longitude']),
+                 (cargo['Delivery_Latitude'], cargo['Delivery_Longitude'])],
+                color='gray',
+                weight=2,
+                opacity=0.5,
+                tooltip=f"Unassigned route"
+            ).add_to(unassigned_group)
+
+            # Add small marker at destination
+            folium.CircleMarker(
+                [cargo['Delivery_Latitude'], cargo['Delivery_Longitude']],
+                radius=5,
+                color='gray',
+                fill=True,
+                fill_color='gray',
+                tooltip=f"Unassigned destination: {cargo['Delivery_Location']}"
+            ).add_to(unassigned_group)
+
     # Add all feature groups to the map
     trucks_group.add_to(m)
     pickups_group.add_to(m)
     deliveries_group.add_to(m)
     rest_stops_group.add_to(m)
     routes_group.add_to(m)
+    unassigned_group.add_to(m)
 
     # Add layer control
     folium.LayerControl(collapsed=False).add_to(m)
@@ -161,7 +212,7 @@ def create_map(trucks_df, cargo_df, route_chains):
     # Add legend
     legend_html = '''
     <div style="position: fixed; 
-                bottom: 50px; left: 50px; width: 150px; height: 160px; 
+                bottom: 50px; left: 50px; width: 150px; height: 190px; 
                 border:2px solid grey; z-index:9999; font-size:14px;
                 background-color:white; padding: 10px;
                 border-radius: 5px;">
@@ -177,6 +228,9 @@ def create_map(trucks_df, cargo_df, route_chains):
         </div>
         <div>
             <i class="fa fa-bed" style="color:red;"></i> Rest Stop
+        </div>
+        <div>
+            <i class="fa fa-circle" style="color:gray;"></i> Unassigned
         </div>
         <div style="margin-top: 5px;">
             <hr style="margin: 2px;">

@@ -1,0 +1,55 @@
+truck_id,truck type,Address (drop off),Latitude (dropoff),Longitude (dropoff),Timestamp (dropoff),"avg moving speed, km/h","price per km, Eur","waiting time price per h, EUR"
+1,General,"Amazon Brieselang GmbH, Havellandstr. 5, 14656 Brieselang, Germany",54.6937121,25.2890164,2024-11-24 13:00:34,73,1,10
+2,Frozen,"Amazon Logistik AF München GmbH, Am Borsigturm 100, 13507 Berlin, Germany",52.5840395,13.2803799,2024-11-24 10:25:38,73,1,10
+3,Frozen,"Amazon Koblenz GmbH, Amazonstrasse 1 / Industriepark A61, 56330 Kobern-Gondorf, Germany",50.3473913,7.491096,2024-11-24 11:04:56,73,1,10
+4,Liquid,"Amazon Logistik Werne GmbH, Carl-Zeiss-Straße 3, 59368 Werne, Germany",51.6557531,7.5975093,2024-11-24 03:44:49,73,1,10
+5,General,"Amazon Logistik Dortmund GmbH, Kaltbandstraße 4, 44145 Dortmund, Germany",51.5292111,7.5033376,2024-11-24 00:50:15,73,1,10
+6,Frozen,"Amazon Fulfillment Germany GmbH, Amazonstrasse 1 / Alte Landstrasse, 47495 Rheinberg, Germany",51.5361475,6.5871798,2024-11-24 03:14:08,73,1,10
+7,Frozen,"Amazon Logistik Werne GmbH, Wahrbrink 25, 59368 Werne, Germany",51.6557531,7.5975093,2024-11-24 18:05:06,73,1,10
+8,Liquid,"Amazon Logistik Werne GmbH, Wahrbrink 23, 59368 Werne, Germany",51.6557531,7.5975093,2024-11-24 21:50:50,73,1,10
+9,General,"Amazon Logistik GmbH, Am Schloss Eichhof 1, 36251 Bad Hersfeld, Germany",50.845324,9.6792282,2024-11-24 10:58:53,73,1,10
+10,Frozen,"Amazon Logistik GmbH, Amazonstrasse 1 / Obere Kühnbach, 36251 Bad Hersfeld, Germany",50.852751,9.7367151,2024-11-24 06:24:03,73,1,10
+11,Frozen,"Amazon Logistik Winsen GmbH, Borgwardstrasse 10, 21423 Winsen an der Luhe, Germany",53.3318407,10.2158844,2024-11-24 00:09:42,73,1,10
+12,Liquid,"Amazon Distribution GmbH, Amazonstrasse1, 04347 Leipzig, Germany",51.358485,12.4239486,2024-11-24 14:51:43,73,1,10
+13,General,"Amazon Distribution GmbH, Imaging Operations, Friedrichshafner Straße 72a, 04357 Leipzig, Germany",51.3699298,12.4064799,2024-11-24 04:08:48,73,1,10
+14,Frozen,"Amazon Distribution GmbH, Amazonstrasse1 Zeppelinstrasse 2, 86836 Graben, Germany",48.2021053,10.8477216,2024-11-24 15:52:38,73,1,10
+15,Frozen,"Amazon Pforzheim GmbH, Amazonstrasse 1 (A8 Exit 44 Pforzheim Nord direction Bretten), 75177 Pforzheim, Germany",48.92455,8.7259786,2024-11-24 14:52:38,73,1,10
+16,Liquid,"DHL Logistik-Center Ludwigsau, Im Fuldatal 2, 36251 Ludwigsau OT Mecklar, Germany",50.9244283,9.7819764,2024-11-24 19:09:39,73,1,10
+17,General,"Kühne + Nagel (AG & Co.) KG Betriebsstätte Rennerod, Industriegebiet Alsberg, 56477 Rennerod, Germany",50.6254423,8.0806549,2024-11-24 03:54:10,73,1,10
+18,Frozen,"Geodis Logistics Deutschland GmbH Niederlassung Hamburg, Bei der Lehmkuhle 2, 21629 Neu Wulmstorf-Mienenbuettel, Germany",53.3686987,9.8031692,2024-11-24 03:00:50,73,1,10
+19,Frozen,"Baur Versand GmbH & Co KG, Siegfried-Lapawa-Straße 1, 96242 Sonnefeld, Germany",50.2152762,11.1397273,2024-11-24 07:33:07,73,1,10
+20,Liquid,"Hermes Fulfilment GmbH Standort Löhne, Schillenbrink 4 – 6, 32584 Löhne, Germany",52.18992,8.67808,2024-11-24 07:54:16,73,1,10
+21,General,"Geodis Malsfeld NS 3PL, Bornwiese 1, 34323 Mansfeld, Germany",51.0871549,9.4914064,2024-11-24 21:38:22,73,1,10
+22,Frozen,"DHL Solutions GmbH, Barentsstrasse 24, 53881 Euskirchen, Germany",50.6888774,6.8345608,2024-11-24 13:56:00,73,1,10
+23,Frozen,"Pôle 45, 1401 Rue du Champ Rouge, 45770 Saran, Loiret, France",47.9623068,1.8460177,2024-11-24 06:39:11,73,1,10
+24,Liquid,"Building 2, Rue Joseph Garde, ZAC, Les Portes de Provence, 26200 Montelimar, Drôme, France",44.5269,4.7411903,2024-11-24 06:49:02,73,1,10
+25,General,"Distripôle Chalon, ZAC du Parc d’Activité du Val de Bourgogne, 2 Tue Amazon Sevrey, 71100 Saône-et-Loire, Burgundy, France",46.7411606,4.8425289,2024-11-24 09:59:44,73,1,10
+26,Frozen,"Parc logistique de Lauwin-Planque 1, Rue Amazon Douai, 59553 Lauwin-Planque, Norde-Pas-de-Calais, France",50.3944438,3.0203613,2024-11-24 21:44:41,73,1,10
+27,Frozen,"7 Rue des Indes Noirs, 80440 Boves, Somme, Hauts-de-france, France",49.8659052,2.3713355,2024-11-24 23:10:35,73,1,10
+28,Liquid,"91220 Brétigny-sur-Orge, Île-de-France, France",48.6062826,2.3053277,2024-11-24 07:30:15,73,1,10
+29,General,"91-135 Rue du Brisson, 38290 Satolas-et-Bonce, Auvergne-Rhône-Alpes, France",45.670369,5.119474,2024-11-24 16:43:20,73,1,10
+30,Frozen,"Avenue Louis Renault, ZAC du Val Bréon, Batiment 3, 77610 Châtres, Île-de-France, France",48.710549,2.810069,2024-11-24 09:25:44,73,1,10
+31,Frozen,"ZAC Moulin, 101 Le Chemin de Poupry, 45410 Artenay, Centre-Val de Loire, France",48.0815941,1.8533357,2024-11-24 21:10:44,73,1,10
+32,Liquid,"900 Rue Denis Papin, 77550 Moissy-Cramayel, Île-de-France, France",48.6115849,2.5939699,2024-11-24 18:05:05,73,1,10
+33,General,"Amazon Spain Fulfillment, S.L., Avigunda De les Garrigues 6-8, 08820 El Prat de Llobregat, Barcelona, Spain",41.311234,2.0737753,2024-11-24 21:31:45,73,1,10
+34,Frozen,"Amazon Spain Fulfillment, S.L., Carrer De La Vernada, 22, 08107 Martorelles, Spain",41.532089,2.235967,2024-11-24 00:46:56,73,1,10
+35,Frozen,"Amazon Spain Fulfillment, S.L, Carrer Ferro, 12, 08755 Castellbisbal, Barcelona, Spain",41.4629613,1.9623085,2024-11-24 00:35:09,73,1,10
+36,Liquid,"Amazon EU Sarl C/O Amazon Spain Fulfillment, S.L, Avenida De Astronomía, 24, 28830 San Fernando De Henares, Madrid, Spain",40.4266797,-3.5365802,2024-11-24 16:48:42,73,1,10
+37,General,"Poligono de Los Vailanes, 28096 Madrid, Spain",40.4511148,-3.7025426,2024-11-24 13:47:47,73,1,10
+38,Frozen,"XPO Logistics, Avenida Río Henares, 16, 19208 Alovera, Guadalajara, Spain",40.5969482,-3.2221547,2024-11-24 23:03:23,73,1,10
+39,Frozen,"Avenida Del Rio Henares, 19208 Alovera, Guadalajara, Spain",40.5878916,-3.237389,2024-11-24 04:06:00,73,1,10
+40,Liquid,"Kuehne & Nagel Warehouse, Amazon Deliveries, Avenida de las Puntas, 10, 43120 Constantí, Tarragona, Spain",41.1535458,1.212596,2024-11-24 14:59:02,73,1,10
+41,General,"Amazon Italia Logistica S.R.L., Via della Meccanica, 4, 02032 Passo Corese, Italy",42.1679856,12.6480321,2024-11-24 13:07:19,73,1,10
+42,Frozen,"Amazon Italia Logistica S.R.L., Via Rita Levi Montalcini, 2, 13100 Vercelli, Italy",45.2926039,8.3969433,2024-11-24 05:58:12,73,1,10
+43,Frozen,"Amazon EU Sarl c/o Amazon Italia Logistica Srl, Strada Dogana Po 2U, 29015 Castel San Giovanni, Italy",45.0773923,9.4551081,2024-11-24 15:30:51,73,1,10
+44,Liquid,"Amazon XITC – Geodis Logistics SpA, Via Aldo Moro, 4, 20080 Francolino di Carpiano (MI), Italy",45.3514686,9.2801966,2024-11-24 18:52:28,73,1,10
+45,General,"Amazon XITD – Geodis Logistics, Viale Maestri del Lavoro 990, 45031 Arquà Polesine, Italy",45.018455,11.742747,2024-11-24 19:30:31,73,1,10
+46,Frozen,"Amazon Fulfillment Poland sp. z o.o., Inwestycyjna 19, 41-208 Sosnowiec, Poland",50.254939,19.2020595,2024-11-24 21:32:08,73,1,10
+47,Frozen,"Amazon Fulfillment Poland, Poznanska 1d, 62-080 Sady, Poland",52.4485268,16.7070156,2024-11-24 16:55:25,73,1,10
+48,Liquid,"Amazon Logistic Prague s.r.o., K Amazonu 235, 252-61 Dobrovíz, Poland",50.1068806,14.2142624,2024-11-24 14:31:44,73,1,10
+49,General,"Amazon Fulfillment Poland sp. z o.o., Kolbaskowo 156, 72-001 Kolbaskowo, Poland",53.3457799,14.4525109,2024-11-24 09:35:11,73,1,10
+50,Frozen,"Amazon Fulfillment, Czekoladowa 1, 55-040 Bielany Wroclawskie, Poland",51.0440071,16.9432506,2024-11-24 07:39:59,73,1,10
+51,Frozen,"Amazon Fulfillment, Logistyczna 6, 55-040 Bielany Wroclawskie, Poland",51.0366714,16.9511322,2024-11-24 05:18:41,73,1,10
+52,Liquid,"Amazon Fulfillment, Czekoladowa 1, 55-040 Bielany Wroclawskie, Poland",51.0440071,16.9432506,2024-11-24 08:12:02,73,1,10
+53,General,"Amazon Logistic Pargue s.r.o, U Trati 216, 25261 Dobrovíz, CZ",50.1088419,14.2141468,2024-11-24 21:35:24,73,1,10
+54,Frozen,"K Amazonu 245, 25261 Dobrovíz, CZ",50.1101896,14.2192547,2024-11-24 19:48:34,73,1,10

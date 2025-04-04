@@ -4,6 +4,7 @@ import numpy as np
 from datetime import datetime
 from streamlit_folium import folium_static
 from geopy.distance import geodesic
+import os
 
 from utils.data_loader import load_data
 from utils.time_cost_calculator import optimize_assignments
@@ -25,10 +26,11 @@ def show_welcome_message():
 
     ### 📝 How to use:
     1. Upload your trucks and cargo CSV files using the sidebar
-    2. Set parameters like maximum distance and waiting time
-    3. Review the optimization results
-    4. Explore the interactive map visualization
-    5. Filter trucks and routes using the map controls
+    2. Or click "Use Sample Data" to try the app with example data
+    3. Set parameters like maximum distance and waiting time
+    4. Review the optimization results
+    5. Explore the interactive map visualization
+    6. Filter trucks and routes using the map controls
 
     ### 📄 Required file formats:
 
@@ -64,6 +66,22 @@ def format_time(timestamp):
         return timestamp
 
 
+def load_sample_data():
+    """Load sample data from files included in the project"""
+    try:
+        # Get the current directory where streamlit_app.py is located
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # Load the sample CSV files
+        trucks_df = pd.read_csv(os.path.join(current_dir, 'trucks.csv'))
+        cargo_df = pd.read_csv(os.path.join(current_dir, 'cargos.csv'))
+
+        return trucks_df, cargo_df
+    except Exception as e:
+        st.error(f"Error loading sample data: {str(e)}")
+        return None, None
+
+
 def main():
     st.set_page_config(
         page_title="Truck-Cargo Assignment Optimizer",
@@ -76,6 +94,11 @@ def main():
     # Add sidebar with file uploaders and options
     with st.sidebar:
         st.header("📂 Upload Data Files")
+
+        # Sample data button
+        use_sample_data = st.button("📊 Use Sample Data", help="Load example truck and cargo data")
+
+        st.subheader("Or upload your own data:")
 
         st.subheader("Trucks Data")
         trucks_file = st.file_uploader(
@@ -93,12 +116,28 @@ def main():
 
         st.markdown("---")
 
-    # Load and validate data
-    if trucks_file is not None and cargo_file is not None:
+    # Initialize data variables
+    trucks_df = None
+    cargo_df = None
+
+    # Load sample data if button is clicked
+    if use_sample_data:
+        with st.spinner('Loading sample data...'):
+            trucks_df, cargo_df = load_sample_data()
+            if trucks_df is not None and cargo_df is not None:
+                st.success("Sample data loaded successfully!")
+    # Load user-uploaded data if available
+    elif trucks_file is not None and cargo_file is not None:
         try:
             trucks_df = pd.read_csv(trucks_file)
             cargo_df = pd.read_csv(cargo_file)
+        except Exception as e:
+            st.error(f"Error loading uploaded files: {str(e)}")
+            st.info("Please make sure your CSV files have the correct format.")
 
+    # Proceed if we have data (either sample or uploaded)
+    if trucks_df is not None and cargo_df is not None:
+        try:
             # Data validation
             required_truck_columns = [
                 'truck_id', 'truck type', 'Address (drop off)',
@@ -263,9 +302,10 @@ def main():
 
                     # Create and display map
                     st.header("🗺️ Route Visualization")
-                    st.info("Use the layer controls to show/hide different elements on the map.")
+                    st.info(
+                        "Use the layer controls to show/hide different elements on the map. Unassigned cargo is shown in gray.")
 
-                    # Create the map with simplified visualization
+                    # Create the map with all cargo (assigned and unassigned)
                     map_obj = create_map(trucks_df, cargo_df, route_chains)
 
                     # Display the map with folium_static
@@ -383,29 +423,67 @@ def display_truck_route(truck_idx, chain, trucks_df):
     st.write(
         f"**Type:** {truck['truck type']} • **Speed:** {truck['avg moving speed, km/h']} km/h • **Price/km:** €{truck['price per km, Eur']} • **Waiting price/h:** €{truck['waiting time price per h, EUR']}")
 
+    # Starting position info
+    st.write("**Starting Position:**")
+    st.write(
+        f"Location: {truck['Address (drop off)']} • Coordinates: ({truck['Latitude (dropoff)']:.4f}, {truck['Longitude (dropoff)']:.4f}) • Available from: {pd.to_datetime(truck['Timestamp (dropoff)']).strftime('%Y-%m-%d %H:%M')}")
+
     # Format route data
     route_data = []
+
     for i, route in enumerate(chain, 1):
         rest_stops_count = len(route['rest_stops_to_pickup']) + len(route['rest_stops_to_delivery'])
         total_rest_duration = sum(
             stop['duration'] for stop in route['rest_stops_to_pickup'] + route['rest_stops_to_delivery']
         )
 
+        # Add pickup route information
+        pickup_info = f"From: {truck['Address (drop off)'] if i == 1 else chain[i - 2]['cargo']['Delivery_Location']}"
+        pickup_info += f" • To: {route['cargo']['Origin']}"
+        pickup_info += f" • Distance: {route['distance_to_pickup']:.1f} km"
+        pickup_info += f" • Rest stops: {len(route['rest_stops_to_pickup'])}"
+
+        # Add delivery route information
+        delivery_info = f"From: {route['cargo']['Origin']}"
+        delivery_info += f" • To: {route['cargo']['Delivery_Location']}"
+        delivery_info += f" • Distance: {route['distance_to_delivery']:.1f} km"
+        delivery_info += f" • Rest stops: {len(route['rest_stops_to_delivery'])}"
+
         route_data.append({
             "Stop": i,
             "Cargo Type": route['cargo']['Cargo_Type'],
+            "Pickup Route": pickup_info,
+            "Delivery Route": delivery_info,
             "Pickup Location": route['cargo']['Origin'],
             "Delivery Location": route['cargo']['Delivery_Location'],
             "Pickup Time": route['pickup_time'].strftime('%Y-%m-%d %H:%M'),
             "Delivery Time": route['delivery_time'].strftime('%Y-%m-%d %H:%M'),
-            "Distance (km)": f"{route['total_distance']:.1f}",
+            "Total Distance (km)": f"{route['total_distance']:.1f}",
             "Rest Stops": rest_stops_count,
             "Rest Duration (h)": f"{total_rest_duration:.1f}" if rest_stops_count > 0 else "-",
             "Waiting Time (h)": f"{route['waiting_time']:.1f}"
         })
 
-    # Show route table
-    st.dataframe(pd.DataFrame(route_data), use_container_width=True)
+    # Create a dataframe for display
+    route_df = pd.DataFrame(route_data)
+
+    # Simplified table for the main view
+    simplified_view = route_df[['Stop', 'Cargo Type', 'Pickup Location', 'Delivery Location',
+                                'Pickup Time', 'Delivery Time', 'Total Distance (km)', 'Waiting Time (h)']]
+    st.dataframe(simplified_view, use_container_width=True)
+
+    # Detailed route information in an expander
+    with st.expander("View Detailed Route Information"):
+        for i, route in enumerate(route_data, 1):
+            st.subheader(f"Stop {i}: {route['Cargo Type']}")
+            st.write("**Pickup Route:**")
+            st.write(route['Pickup Route'])
+            st.write("**Delivery Route:**")
+            st.write(route['Delivery Route'])
+            st.write(f"**Pickup Time:** {route['Pickup Time']} • **Delivery Time:** {route['Delivery Time']}")
+            st.write(
+                f"**Total Distance:** {route['Total Distance (km)']} km • **Waiting Time:** {route['Waiting Time (h)']} h • **Rest Stops:** {route['Rest Stops']}")
+            st.markdown("---")
 
     # Show rest stop details if any exist
     rest_stops = []
