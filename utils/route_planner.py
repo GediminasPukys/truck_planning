@@ -7,6 +7,9 @@ from geopy.distance import geodesic
 class RoutePlanner:
     def __init__(self, standard_speed_kmh=73):
         self.standard_speed_kmh = standard_speed_kmh
+        # Set default constraints
+        self.max_distance_km = 250
+        self.max_waiting_hours = 24
         # EU regulations constants
         self.DAILY_DRIVE_LIMIT = 9  # hours
         self.CONTINUOUS_DRIVE_LIMIT = 4.5  # hours
@@ -60,7 +63,8 @@ class RoutePlanner:
         return {
             'arrival_time': current_time,
             'rest_stops': rest_stops,
-            'updated_drive_time': cumulative_drive_time
+            'updated_drive_time': cumulative_drive_time,
+            'total_distance': distance
         }
 
     def plan_route_chain(self, truck, available_cargo, current_time, last_rest_time):
@@ -81,6 +85,16 @@ class RoutePlanner:
                 if cargo['Cargo_Type'].lower() != truck['truck type'].lower():
                     continue
 
+                # Calculate distance to pickup
+                _, distance_to_pickup = self.calculate_travel_time(
+                    current_pos,
+                    (cargo['Origin_Latitude'], cargo['Origin_Longitude'])
+                )
+
+                # ENFORCE MAXIMUM DISTANCE CHECK
+                if distance_to_pickup > self.max_distance_km:
+                    continue
+
                 # Calculate route to pickup
                 pickup_route = self.calculate_route_with_rests(
                     current_pos,
@@ -94,6 +108,14 @@ class RoutePlanner:
                     pd.to_datetime(cargo['Available_From'])
                 )
 
+                # Check if waiting time exceeds maximum
+                waiting_time = (
+                                       earliest_pickup - pickup_route['arrival_time']
+                               ).total_seconds() / 3600 if earliest_pickup > pickup_route['arrival_time'] else 0
+
+                if waiting_time > self.max_waiting_hours:
+                    continue
+
                 if earliest_pickup > pd.to_datetime(cargo['Available_To']):
                     continue
 
@@ -105,22 +127,10 @@ class RoutePlanner:
                     pickup_route['updated_drive_time']
                 )
 
-                # Calculate total distance
-                _, distance_to_pickup = self.calculate_travel_time(
-                    current_pos,
-                    (cargo['Origin_Latitude'], cargo['Origin_Longitude'])
-                )
-                _, distance_to_delivery = self.calculate_travel_time(
-                    (cargo['Origin_Latitude'], cargo['Origin_Longitude']),
-                    (cargo['Delivery_Latitude'], cargo['Delivery_Longitude'])
-                )
-
+                # Use the distance from the route calculation
+                distance_to_pickup = pickup_route['total_distance']
+                distance_to_delivery = delivery_route['total_distance']
                 total_distance = distance_to_pickup + distance_to_delivery
-
-                # Calculate waiting time at pickup
-                waiting_time = (
-                                       earliest_pickup - pickup_route['arrival_time']
-                               ).total_seconds() / 3600 if earliest_pickup > pickup_route['arrival_time'] else 0
 
                 # Calculate score
                 score = waiting_time * float(truck['waiting time price per h, EUR']) + \

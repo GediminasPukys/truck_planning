@@ -6,7 +6,7 @@ from folium import plugins
 
 
 def create_map(trucks_df, cargo_df, route_chains):
-    """Create an interactive map with filters and full-screen mode"""
+    """Create an interactive map with truck routes and cargo locations"""
     # Calculate map center
     all_lats = pd.concat([
         trucks_df['Latitude (dropoff)'],
@@ -19,6 +19,7 @@ def create_map(trucks_df, cargo_df, route_chains):
         cargo_df['Delivery_Longitude']
     ])
 
+    # Create base map
     m = folium.Map(
         location=[all_lats.mean(), all_lons.mean()],
         zoom_start=6,
@@ -26,50 +27,24 @@ def create_map(trucks_df, cargo_df, route_chains):
     )
 
     # Add fullscreen control
-    plugins.Fullscreen(
-        position='topleft',
-        title='Expand map',
-        title_cancel='Exit full screen',
-        force_separate_button=True
-    ).add_to(m)
+    plugins.Fullscreen().add_to(m)
 
     # Create feature groups for filtering
     trucks_group = folium.FeatureGroup(name='Trucks')
-    pickup_routes_group = folium.FeatureGroup(name='Pickup Routes')
-    delivery_routes_group = folium.FeatureGroup(name='Delivery Routes')
-    pickup_points_group = folium.FeatureGroup(name='Pickup Points')
-    delivery_points_group = folium.FeatureGroup(name='Delivery Points')
+    pickups_group = folium.FeatureGroup(name='Pickup Points')
+    deliveries_group = folium.FeatureGroup(name='Delivery Points')
     rest_stops_group = folium.FeatureGroup(name='Rest Stops')
+    routes_group = folium.FeatureGroup(name='Routes')
 
-    # Add custom layer control CSS
-    m.get_root().html.add_child(folium.Element("""
-        <style>
-            .leaflet-control-layers {
-                background: #fff;
-                padding: 10px;
-                border-radius: 5px;
-                max-height: 400px;
-                overflow-y: auto;
-            }
-            .filter-group {
-                margin: 5px 0;
-                padding: 5px;
-                border-bottom: 1px solid #eee;
-            }
-            .filter-title {
-                font-weight: bold;
-                margin-bottom: 5px;
-            }
-        </style>
-    """))
-
+    # Define colors for trucks
     colors = ['blue', 'green', 'red', 'purple', 'orange', 'darkred', 'darkblue', 'darkgreen']
 
+    # Add data to map
     for truck_idx, route_chain in route_chains.items():
         truck = trucks_df.iloc[truck_idx]
         color = colors[truck_idx % len(colors)]
 
-        # Create truck marker
+        # Add truck marker
         truck_popup = f"""
             <div style='min-width: 200px'>
                 <h4>Truck {truck['truck_id']}</h4>
@@ -79,62 +54,32 @@ def create_map(trucks_df, cargo_df, route_chains):
             </div>
         """
 
-        # Add truck marker to trucks group
+        # Add truck marker
         folium.Marker(
             [truck['Latitude (dropoff)'], truck['Longitude (dropoff)']],
             popup=truck_popup,
             icon=folium.Icon(color=color, icon='truck', prefix='fa'),
-            tooltip=f"Truck {truck['truck_id']}",
+            tooltip=f"Truck {truck['truck_id']}"
         ).add_to(trucks_group)
 
+        # Starting position
         current_pos = (truck['Latitude (dropoff)'], truck['Longitude (dropoff)'])
 
+        # Add routes
         for i, route in enumerate(route_chain):
             cargo = route['cargo']
 
-            # Draw route to pickup with rest stops
+            # Pickup location
             pickup_coords = (cargo['Origin_Latitude'], cargo['Origin_Longitude'])
-            last_pos = current_pos
 
-            # Add rest stops on way to pickup
-            for rest in route['rest_stops_to_pickup']:
-                # Draw route segment to rest stop
-                folium.PolyLine(
-                    locations=[last_pos, rest['location']],
-                    weight=2,
-                    color=color,
-                    opacity=0.8,
-                    tooltip=f"To rest stop: Truck {truck['truck_id']}"
-                ).add_to(pickup_routes_group)
-
-                # Add rest stop marker
-                rest_popup = f"""
-                    <div style='min-width: 150px'>
-                        <h4>Rest Stop</h4>
-                        <b>Truck:</b> {truck['truck_id']}<br>
-                        <b>Time:</b> {rest['time']}<br>
-                        <b>Duration:</b> {rest['duration']}h<br>
-                        <b>Type:</b> {rest['type']}
-                    </div>
-                """
-
-                folium.Marker(
-                    rest['location'],
-                    popup=rest_popup,
-                    icon=folium.Icon(color='red', icon='bed', prefix='fa'),
-                    tooltip=f"Rest: {rest['duration']}h"
-                ).add_to(rest_stops_group)
-
-                last_pos = rest['location']
-
-            # Complete route to pickup
+            # Draw route to pickup
             folium.PolyLine(
-                locations=[last_pos, pickup_coords],
-                weight=2,
+                [current_pos, pickup_coords],
                 color=color,
-                opacity=0.8,
-                tooltip=f"To pickup: Truck {truck['truck_id']}"
-            ).add_to(pickup_routes_group)
+                weight=3,
+                opacity=0.7,
+                tooltip=f"To pickup: {route['distance_to_pickup']:.1f} km"
+            ).add_to(routes_group)
 
             # Add pickup marker
             pickup_popup = f"""
@@ -143,7 +88,7 @@ def create_map(trucks_df, cargo_df, route_chains):
                     <b>Truck:</b> {truck['truck_id']}<br>
                     <b>Cargo Type:</b> {cargo['Cargo_Type']}<br>
                     <b>Location:</b> {cargo['Origin']}<br>
-                    <b>Time:</b> {route['pickup_time']}
+                    <b>Time:</b> {route['pickup_time'].strftime('%Y-%m-%d %H:%M')}
                 </div>
             """
 
@@ -152,49 +97,27 @@ def create_map(trucks_df, cargo_df, route_chains):
                 popup=pickup_popup,
                 icon=folium.Icon(color=color, icon='play', prefix='fa'),
                 tooltip=f"Pickup {i + 1}: Truck {truck['truck_id']}"
-            ).add_to(pickup_points_group)
+            ).add_to(pickups_group)
 
-            # Draw delivery route
-            last_pos = pickup_coords
-            delivery_coords = (cargo['Delivery_Latitude'], cargo['Delivery_Longitude'])
-
-            # Add rest stops on way to delivery
-            for rest in route['rest_stops_to_delivery']:
-                folium.PolyLine(
-                    locations=[last_pos, rest['location']],
-                    weight=2,
-                    color=color,
-                    opacity=0.8,
-                    tooltip=f"To rest stop: Truck {truck['truck_id']}"
-                ).add_to(delivery_routes_group)
-
-                rest_popup = f"""
-                    <div style='min-width: 150px'>
-                        <h4>Rest Stop</h4>
-                        <b>Truck:</b> {truck['truck_id']}<br>
-                        <b>Time:</b> {rest['time']}<br>
-                        <b>Duration:</b> {rest['duration']}h<br>
-                        <b>Type:</b> {rest['type']}
-                    </div>
-                """
-
+            # Add rest stops on way to pickup
+            for rest in route['rest_stops_to_pickup']:
                 folium.Marker(
                     rest['location'],
-                    popup=rest_popup,
-                    icon=folium.Icon(color='red', icon='bed', prefix='fa'),
-                    tooltip=f"Rest: {rest['duration']}h"
+                    popup=f"Rest: {rest['duration'] * 60:.0f} min",
+                    icon=folium.Icon(color='red', icon='bed', prefix='fa')
                 ).add_to(rest_stops_group)
 
-                last_pos = rest['location']
+            # Delivery location
+            delivery_coords = (cargo['Delivery_Latitude'], cargo['Delivery_Longitude'])
 
-            # Complete route to delivery
+            # Draw route from pickup to delivery
             folium.PolyLine(
-                locations=[last_pos, delivery_coords],
-                weight=2,
+                [pickup_coords, delivery_coords],
                 color=color,
-                opacity=0.8,
-                tooltip=f"To delivery: Truck {truck['truck_id']}"
-            ).add_to(delivery_routes_group)
+                weight=3,
+                opacity=0.7,
+                tooltip=f"To delivery: {route['distance_to_delivery']:.1f} km"
+            ).add_to(routes_group)
 
             # Add delivery marker
             delivery_popup = f"""
@@ -203,7 +126,7 @@ def create_map(trucks_df, cargo_df, route_chains):
                     <b>Truck:</b> {truck['truck_id']}<br>
                     <b>Cargo Type:</b> {cargo['Cargo_Type']}<br>
                     <b>Location:</b> {cargo['Delivery_Location']}<br>
-                    <b>Time:</b> {route['delivery_time']}
+                    <b>Time:</b> {route['delivery_time'].strftime('%Y-%m-%d %H:%M')}
                 </div>
             """
 
@@ -212,60 +135,55 @@ def create_map(trucks_df, cargo_df, route_chains):
                 popup=delivery_popup,
                 icon=folium.Icon(color=color, icon='stop', prefix='fa'),
                 tooltip=f"Delivery {i + 1}: Truck {truck['truck_id']}"
-            ).add_to(delivery_points_group)
+            ).add_to(deliveries_group)
 
+            # Add rest stops on way to delivery
+            for rest in route['rest_stops_to_delivery']:
+                folium.Marker(
+                    rest['location'],
+                    popup=f"Rest: {rest['duration'] * 60:.0f} min",
+                    icon=folium.Icon(color='red', icon='bed', prefix='fa')
+                ).add_to(rest_stops_group)
+
+            # Update current position for next route
             current_pos = delivery_coords
 
-    # Add all feature groups to map
+    # Add all feature groups to the map
     trucks_group.add_to(m)
-    pickup_routes_group.add_to(m)
-    delivery_routes_group.add_to(m)
-    pickup_points_group.add_to(m)
-    delivery_points_group.add_to(m)
+    pickups_group.add_to(m)
+    deliveries_group.add_to(m)
     rest_stops_group.add_to(m)
+    routes_group.add_to(m)
 
     # Add layer control
     folium.LayerControl(collapsed=False).add_to(m)
 
-    # Add search functionality
-    search_trucks = list(trucks_df['truck_id'].unique())
-    search_cargo = list(cargo_df['Cargo_Type'].unique())
-
-    search_js = f"""
-        <script>
-        var searchTrucks = {search_trucks};
-        var searchCargo = {search_cargo};
-
-        function filterMap() {{
-            var truckInput = document.getElementById('truckFilter').value.toLowerCase();
-            var cargoInput = document.getElementById('cargoFilter').value.toLowerCase();
-
-            // Filter markers and routes based on input
-            // Implementation would go here
-        }}
-        </script>
-    """
-
-    # Add custom filter controls
-    filter_html = f"""
-        <div class='leaflet-control leaflet-control-layers' style='position: absolute; top: 10px; right: 10px;'>
-            <div class='filter-group'>
-                <div class='filter-title'>🚚 Filter by Truck</div>
-                <select id='truckFilter' onchange='filterMap()'>
-                    <option value=''>All Trucks</option>
-                    {"".join(f"<option value='{t}'>{t}</option>" for t in search_trucks)}
-                </select>
-            </div>
-            <div class='filter-group'>
-                <div class='filter-title'>📦 Filter by Cargo</div>
-                <select id='cargoFilter' onchange='filterMap()'>
-                    <option value=''>All Cargo</option>
-                    {"".join(f"<option value='{c}'>{c}</option>" for c in search_cargo)}
-                </select>
-            </div>
+    # Add legend
+    legend_html = '''
+    <div style="position: fixed; 
+                bottom: 50px; left: 50px; width: 150px; height: 160px; 
+                border:2px solid grey; z-index:9999; font-size:14px;
+                background-color:white; padding: 10px;
+                border-radius: 5px;">
+        <div style="font-weight: bold;">Legend</div>
+        <div style="margin-top: 5px;">
+            <i class="fa fa-truck" style="color:blue;"></i> Truck
         </div>
-    """
-
-    m.get_root().html.add_child(folium.Element(search_js + filter_html))
+        <div>
+            <i class="fa fa-play" style="color:green;"></i> Pickup
+        </div>
+        <div>
+            <i class="fa fa-stop" style="color:red;"></i> Delivery
+        </div>
+        <div>
+            <i class="fa fa-bed" style="color:red;"></i> Rest Stop
+        </div>
+        <div style="margin-top: 5px;">
+            <hr style="margin: 2px;">
+            <div>Lines show routes</div>
+        </div>
+    </div>
+    '''
+    m.get_root().html.add_child(folium.Element(legend_html))
 
     return m
