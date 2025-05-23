@@ -1,4 +1,4 @@
-# utils/profit_optimizer.py
+# utils/profit_optimizer.py (Updated with corrected cost calculation)
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -7,7 +7,7 @@ from typing import Dict, List, Tuple, Set, Optional
 
 
 class ProfitCalculator:
-    """Class to calculate profit based on cargo premium and route costs"""
+    """Class to calculate profit based on cargo premium and route costs - CORRECTED VERSION"""
 
     def __init__(self, price_per_km=0.39, price_per_hour=10, standard_speed_kmh=73):
         self.price_per_km = price_per_km
@@ -20,7 +20,7 @@ class ProfitCalculator:
 
     def calculate_profit(self, cargo, truck, route_info):
         """
-        Calculate profit for a cargo delivery
+        Calculate profit for a cargo delivery - CORRECTED COST CALCULATION
 
         Args:
             cargo: Cargo data (contains Premium)
@@ -29,6 +29,7 @@ class ProfitCalculator:
 
         Returns:
             profit: Calculated profit value
+            breakdown: Detailed cost breakdown
         """
         # Get premium from cargo
         try:
@@ -54,31 +55,24 @@ class ProfitCalculator:
             delivery_time = float(route_info.get('travel_to_delivery_hours', 0))
             waiting_time = float(route_info.get('waiting_hours', 0))
 
-            # Note: time_cost is SUBTRACTED from the overall cost per requirements
+            # CORRECTED: Time cost is a real cost, not subtracted
             time_cost = (pickup_time + waiting_time + delivery_time) * self.price_per_hour
         except (ValueError, TypeError) as e:
             print(f"Error calculating time cost: {str(e)}")
             time_cost = 0
 
-        # Total cost is distance_cost MINUS time_cost
-        total_cost = distance_cost - time_cost
+        # CORRECTED FORMULA: Total cost is distance_cost PLUS time_cost
+        total_cost = distance_cost + time_cost
 
         # Profit is premium minus total_cost
         profit = premium - total_cost
 
-        # Sanity check for unusually high/low profit values
-        if profit > 10000:
-            print(f"Warning: Unusually high profit: {profit:.2f} EUR. Premium: {premium:.2f}, Cost: {total_cost:.2f}")
-        elif profit < -10000:
-            print(f"Warning: Unusually low profit: {profit:.2f} EUR. Premium: {premium:.2f}, Cost: {total_cost:.2f}")
-
-        # Detailed debug output to help diagnose issues
+        # Debug output for verification
         if profit <= 0:
-            print(f"Unprofitable delivery detected:")
+            print(f"Unprofitable delivery detected (CORRECTED calculation):")
             print(f"  Premium: {premium:.2f} EUR")
             print(f"  Distance: {total_distance:.2f} km at {self.price_per_km:.2f} EUR/km = {distance_cost:.2f} EUR")
-            print(
-                f"  Time: {(pickup_time + waiting_time + delivery_time):.2f} h at {self.price_per_hour:.2f} EUR/h = {-time_cost:.2f} EUR (credit)")
+            print(f"  Time: {(pickup_time + waiting_time + delivery_time):.2f} h at {self.price_per_hour:.2f} EUR/h = {time_cost:.2f} EUR")
             print(f"  Total cost: {total_cost:.2f} EUR")
             print(f"  Profit: {profit:.2f} EUR")
 
@@ -86,7 +80,7 @@ class ProfitCalculator:
         profit_breakdown = {
             'premium': premium,
             'distance_cost': distance_cost,
-            'time_cost': -time_cost,  # Negative to show it reduces cost
+            'time_cost': time_cost,  # Now correctly positive
             'total_cost': total_cost,
             'profit': profit
         }
@@ -95,7 +89,7 @@ class ProfitCalculator:
 
 
 class FleetProfitOptimizer:
-    """Class to optimize fleet profit over an operation period"""
+    """Class to optimize fleet profit over an operation period - CORRECTED VERSION"""
 
     def __init__(self, max_distance_km=250, max_waiting_hours=24,
                  price_per_km=0.39, price_per_hour=10, standard_speed_kmh=73):
@@ -116,6 +110,8 @@ class FleetProfitOptimizer:
 
     def find_rest_point(self, start_pos, end_pos, distance_covered, total_distance):
         """Calculate rest point location as a fraction along the route"""
+        if total_distance == 0:
+            return start_pos
         fraction = distance_covered / total_distance
         rest_lat = start_pos[0] + (end_pos[0] - start_pos[0]) * fraction
         rest_lon = start_pos[1] + (end_pos[1] - start_pos[1]) * fraction
@@ -166,7 +162,7 @@ class FleetProfitOptimizer:
 
     def evaluate_cargo_assignment(self, truck_info, cargo, operation_end_time):
         """
-        Evaluate if a cargo assignment is feasible and calculate profit
+        Evaluate if a cargo assignment is feasible and calculate profit - CORRECTED VERSION
 
         Args:
             truck_info: Dictionary with truck data and current status
@@ -248,7 +244,7 @@ class FleetProfitOptimizer:
             rejection_reason = f"Delivery time ({delivery_time.strftime('%Y-%m-%d %H:%M')}) is after operation end time ({operation_end_time.strftime('%Y-%m-%d %H:%M')})"
             return -float('inf'), False, {}, rejection_reason
 
-        # Calculate profit
+        # Calculate profit using CORRECTED formula
         route_info = {
             'distance_to_pickup': distance_to_pickup,
             'distance_to_delivery': delivery_route['total_distance'],
@@ -286,7 +282,7 @@ class FleetProfitOptimizer:
 
     def optimize_fleet_profit(self, trucks_df, cargo_df, operation_end_time):
         """
-        Optimize entire fleet to maximize profit within operating period
+        Optimize entire fleet to maximize profit within operating period - CORRECTED VERSION
 
         Args:
             trucks_df: DataFrame with truck data
@@ -296,7 +292,8 @@ class FleetProfitOptimizer:
         Returns:
             (route_chains, total_profit, rejection_stats): Optimized routes, total profit, and rejection statistics
         """
-        print(f"Starting fleet profit optimization with {len(trucks_df)} trucks and {len(cargo_df)} cargo items")
+        print(f"Starting fleet profit optimization with CORRECTED cost calculation")
+        print(f"Using {len(trucks_df)} trucks and {len(cargo_df)} cargo items")
         print(f"Operation end time: {operation_end_time}")
 
         # Check if Premium column exists in cargo_df
@@ -304,8 +301,7 @@ class FleetProfitOptimizer:
             print("WARNING: No Premium column found in cargo data. All profit calculations will be negative.")
         else:
             premium_stats = cargo_df['Premium'].describe()
-            print(
-                f"Premium statistics: min={premium_stats['min']}, max={premium_stats['max']}, mean={premium_stats['mean']}")
+            print(f"Premium statistics: min={premium_stats['min']:.2f}, max={premium_stats['max']:.2f}, mean={premium_stats['mean']:.2f}")
 
         # Initialize tracking variables
         total_profit = 0
@@ -380,7 +376,7 @@ class FleetProfitOptimizer:
                     if cargo_idx in assigned_cargo:
                         continue
 
-                    # Calculate profit & check constraints
+                    # Calculate profit & check constraints using CORRECTED calculation
                     profit, feasible, route_details, rejection_reason = self.evaluate_cargo_assignment(
                         truck_info,
                         cargo,
@@ -418,8 +414,7 @@ class FleetProfitOptimizer:
                 assigned_cargo.add(cargo_idx)
                 total_profit += best_profit
 
-                print(
-                    f"Assigned cargo {cargo_idx} to truck {truck_info['truck']['truck_id']} with profit {best_profit:.2f} EUR")
+                print(f"Assigned cargo {cargo_idx} to truck {truck_info['truck']['truck_id']} with profit {best_profit:.2f} EUR (CORRECTED)")
 
                 # Add to route chains (for visualization and output)
                 if truck_info['idx'] not in route_chains:
@@ -443,7 +438,8 @@ class FleetProfitOptimizer:
                 # No more profitable assignments possible
                 break
 
-        print(f"Optimization completed with {len(assigned_cargo)}/{len(cargo_df)} cargo items assigned")
+        print(f"Optimization completed with CORRECTED cost calculation")
+        print(f"Assignments: {len(assigned_cargo)}/{len(cargo_df)}")
         print(f"Total profit: {total_profit:.2f} EUR")
 
         # Calculate rejection statistics summary

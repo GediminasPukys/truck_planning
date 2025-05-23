@@ -12,55 +12,102 @@ import io
 from utils.data_loader import load_data
 from utils.time_cost_calculator import TimeCostCalculator, calculate_total_metrics
 from utils.profit_optimizer import FleetProfitOptimizer, ProfitCalculator
+from utils.extended_profit_optimizer import ExtendedFleetProfitOptimizer
+from utils.time_horizon_planner import TimeHorizonPlanner, MultiDayRoutePlanner
 from utils.visualization import create_map
 from utils.route_planner import RoutePlanner
-from utils.diagnostics_module import run_comprehensive_diagnostics, generate_diagnostic_report
+
+
+def calculate_suggested_operation_period(cargo_df):
+    """Calculate suggested operation period based on cargo data"""
+    if cargo_df is None or 'Available_To' not in cargo_df.columns:
+        return None, None
+
+    try:
+        cargo_df['Available_From'] = pd.to_datetime(cargo_df['Available_From'])
+        cargo_df['Available_To'] = pd.to_datetime(cargo_df['Available_To'])
+
+        earliest_cargo = cargo_df['Available_From'].min()
+        latest_cargo = cargo_df['Available_To'].max()
+
+        # Add buffer for delivery completion
+        suggested_end = latest_cargo + timedelta(days=3)
+
+        return earliest_cargo, suggested_end
+    except:
+        return None, None
+
+
+def analyze_time_distribution(cargo_df):
+    """Analyze cargo distribution across time"""
+    if cargo_df is None:
+        return {}
+
+    try:
+        cargo_df['Available_From'] = pd.to_datetime(cargo_df['Available_From'])
+        cargo_df['Available_To'] = pd.to_datetime(cargo_df['Available_To'])
+
+        # Group by week
+        cargo_df['Week'] = cargo_df['Available_From'].dt.isocalendar().week
+        weekly_distribution = cargo_df.groupby('Week').size().to_dict()
+
+        # Group by day
+        cargo_df['Date'] = cargo_df['Available_From'].dt.date
+        daily_distribution = cargo_df.groupby('Date').size().to_dict()
+
+        return {
+            'weekly': weekly_distribution,
+            'daily': daily_distribution,
+            'earliest': cargo_df['Available_From'].min(),
+            'latest': cargo_df['Available_To'].max(),
+            'total_span_days': (cargo_df['Available_To'].max() - cargo_df['Available_From'].min()).days
+        }
+    except:
+        return {}
 
 
 def show_welcome_message():
     """Display welcome message and instructions"""
     st.markdown("""
-    ## 👋 Welcome to the Truck-Cargo Assignment Profit Optimizer!
+    ## 👋 Welcome to the Extended Truck-Cargo Assignment Profit Optimizer!
 
-    This application helps optimize the assignment of trucks to cargo loads by:
-    - Maximizing total profit across the fleet
-    - Respecting time windows for pickup and delivery
+    This enhanced application helps optimize the assignment of trucks to cargo loads across **extended time horizons** by:
+    - Maximizing total profit across the fleet over weeks or months
+    - Planning multi-day routes with proper rest periods
+    - Respecting time windows for pickup and delivery across extended periods
     - Matching truck and cargo types
     - Ensuring maximum distance and waiting time constraints are met
-    - Optimizing fleet utilization across the operating period
+    - Optimizing fleet utilization across the entire operating period
+
+    ### ✨ New Extended Features:
+    - **Multi-Day Planning**: Plan routes across weeks and months
+    - **Automatic Time Horizon Detection**: Automatically sets operation period based on cargo data
+    - **Time Distribution Analysis**: Shows cargo distribution across time periods
+    - **Extended Route Planning**: Handles overnight stops and multi-day routes
+    - **Improved Optimization**: Better algorithms for longer planning horizons
 
     ### 📝 How to use:
     1. Upload your trucks and cargo CSV files using the sidebar
     2. Or click "Use Sample Data" to try the app with example data
-    3. Set parameters like maximum distance, waiting time, prices, and operating period
-    4. Click "Maximize Fleet Profit" to run the optimization
-    5. Review the profit results and route assignments
-    6. Explore the interactive map visualization
-    7. Filter trucks and routes using the map controls
+    3. The system will automatically detect and suggest the optimal operation period
+    4. Set parameters like maximum distance, waiting time, prices
+    5. Choose between Quick Optimization (original) or Extended Optimization (new)
+    6. Click "Maximize Fleet Profit" to run the optimization
+    7. Review the profit results and route assignments across the entire time horizon
+    8. Explore the interactive map visualization
+    9. Filter trucks and routes using the map controls
 
     ### 📄 Required file formats:
 
     **Trucks CSV:**
-    - truck_id
-    - truck type
-    - Address (drop off)
-    - Latitude (dropoff)
-    - Longitude (dropoff)
-    - Timestamp (dropoff)
-    - avg moving speed, km/h
-    - price per km, Eur
-    - waiting time price per h, EUR
+    - truck_id, truck type, Address (drop off)
+    - Latitude (dropoff), Longitude (dropoff), Timestamp (dropoff)
+    - avg moving speed, km/h, price per km, Eur, waiting time price per h, EUR
 
     **Cargo CSV:**
-    - Origin
-    - Origin_Latitude
-    - Origin_Longitude
-    - Available_From
-    - Available_To
-    - Delivery_Location
-    - Delivery_Latitude
-    - Delivery_Longitude
-    - Cargo_Type
+    - Origin, Origin_Latitude, Origin_Longitude
+    - Available_From, Available_To, Delivery_Location
+    - Delivery_Latitude, Delivery_Longitude, Cargo_Type
     - Premium (profit for delivering cargo)
     """)
 
@@ -87,12 +134,52 @@ def generate_route_summary_csv(route_chains, trucks_df):
                 "Distance to Delivery (km)": f"{route['distance_to_delivery']:.1f}",
                 "Total Distance (km)": f"{route['total_distance']:.1f}",
                 "Waiting Time (h)": f"{route['waiting_time']:.1f}",
-                "Rest Stops": len(route['rest_stops_to_pickup']) + len(route['rest_stops_to_delivery']),
+                "Rest Stops": len(route.get('rest_stops_to_pickup', [])) + len(route.get('rest_stops_to_delivery', [])),
                 "Premium (EUR)": f"{cargo['Premium']:.2f}",
                 "Profit (EUR)": f"{route['profit']:.2f}"
             })
 
     return pd.DataFrame(data).to_csv(index=False).encode('utf-8')
+
+
+def display_time_horizon_analysis(cargo_df):
+    """Display time horizon analysis"""
+    st.subheader("📅 Time Horizon Analysis")
+
+    time_analysis = analyze_time_distribution(cargo_df)
+
+    if time_analysis:
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Total Time Span", f"{time_analysis['total_span_days']} days")
+            st.metric("Earliest Cargo", time_analysis['earliest'].strftime('%Y-%m-%d'))
+
+        with col2:
+            st.metric("Latest Cargo", time_analysis['latest'].strftime('%Y-%m-%d'))
+            st.metric("Total Cargo Items", len(cargo_df))
+
+        with col3:
+            avg_per_day = len(cargo_df) / max(time_analysis['total_span_days'], 1)
+            st.metric("Avg Cargo/Day", f"{avg_per_day:.1f}")
+
+        # Show weekly distribution
+        if time_analysis['weekly']:
+            st.write("**Weekly Distribution:**")
+            weekly_df = pd.DataFrame(
+                list(time_analysis['weekly'].items()),
+                columns=['Week', 'Cargo Count']
+            )
+            st.bar_chart(weekly_df.set_index('Week'))
+
+        # Show daily distribution (sample)
+        if time_analysis['daily'] and len(time_analysis['daily']) <= 31:
+            st.write("**Daily Distribution:**")
+            daily_df = pd.DataFrame([
+                {'Date': str(date), 'Count': count}
+                for date, count in sorted(time_analysis['daily'].items())
+            ])
+            st.line_chart(daily_df.set_index('Date'))
 
 
 def display_route_results(route_chains, trucks_df):
@@ -104,7 +191,7 @@ def display_route_results(route_chains, trucks_df):
         for chain in route_chains.values()
     )
     total_rest_stops = sum(
-        sum(len(route['rest_stops_to_pickup']) + len(route['rest_stops_to_delivery'])
+        sum(len(route.get('rest_stops_to_pickup', [])) + len(route.get('rest_stops_to_delivery', []))
             for route in chain)
         for chain in route_chains.values()
     )
@@ -127,9 +214,24 @@ def display_route_results(route_chains, trucks_df):
         for chain in route_chains.values()
     )
 
+    # Calculate time span of operations
+    all_pickup_times = []
+    all_delivery_times = []
+    for chain in route_chains.values():
+        for route in chain:
+            all_pickup_times.append(route['pickup_time'])
+            all_delivery_times.append(route['delivery_time'])
+
+    if all_pickup_times and all_delivery_times:
+        operation_start = min(all_pickup_times)
+        operation_end = max(all_delivery_times)
+        operation_span = (operation_end - operation_start).days
+    else:
+        operation_span = 0
+
     # Display in a nice grid of metrics
-    st.header("📊 Optimization Summary")
-    col1, col2, col3 = st.columns(3)
+    st.header("📊 Extended Optimization Summary")
+    col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Deliveries", total_deliveries)
         st.metric("Total Distance", f"{total_distance:.1f} km")
@@ -139,6 +241,10 @@ def display_route_results(route_chains, trucks_df):
     with col3:
         st.metric("Total Premium", f"{total_premium:.2f} EUR")
         st.metric("Total Profit", f"{total_profit:.2f} EUR")
+    with col4:
+        st.metric("Operation Span", f"{operation_span} days")
+        if total_deliveries > 0:
+            st.metric("Profit per Delivery", f"{total_profit / total_deliveries:.2f} EUR")
 
     # Display profit by truck
     st.subheader("Profit by Truck")
@@ -151,14 +257,14 @@ def display_route_results(route_chains, trucks_df):
 
     # Create a simple bar chart of profit by truck
     if profit_by_truck:
-        fig, ax = plt.subplots(figsize=(10, 4))
+        fig, ax = plt.subplots(figsize=(12, 6))
         trucks = list(profit_by_truck.keys())
         profits = list(profit_by_truck.values())
 
         bars = ax.bar(trucks, profits)
         ax.set_xlabel('Truck ID')
         ax.set_ylabel('Profit (EUR)')
-        ax.set_title('Profit by Truck')
+        ax.set_title('Profit by Truck - Extended Time Horizon')
 
         # Add values on top of bars
         for bar in bars:
@@ -169,7 +275,41 @@ def display_route_results(route_chains, trucks_df):
                         textcoords="offset points",
                         ha='center', va='bottom')
 
+        plt.xticks(rotation=45)
+        plt.tight_layout()
         st.pyplot(fig)
+
+    # Timeline visualization
+    if all_pickup_times and all_delivery_times:
+        st.subheader("📅 Operation Timeline")
+        timeline_data = []
+
+        for truck_idx, chain in route_chains.items():
+            truck_id = trucks_df.iloc[truck_idx]['truck_id']
+            for i, route in enumerate(chain):
+                timeline_data.append({
+                    'Truck': f"Truck {truck_id}",
+                    'Route': i + 1,
+                    'Start': route['pickup_time'].date(),
+                    'End': route['delivery_time'].date(),
+                    'Profit': route['profit']
+                })
+
+        if timeline_data:
+            timeline_df = pd.DataFrame(timeline_data)
+
+            # Group by date to show daily activity
+            daily_activity = timeline_df.groupby('Start').agg({
+                'Truck': 'count',
+                'Profit': 'sum'
+            }).rename(columns={'Truck': 'Active Deliveries'})
+
+            st.write("**Daily Activity Overview:**")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.line_chart(daily_activity['Active Deliveries'])
+            with col2:
+                st.line_chart(daily_activity['Profit'])
 
     # Display route chains
     st.subheader("📋 Detailed Route Plans")
@@ -196,6 +336,14 @@ def display_truck_route(truck_idx, chain, trucks_df):
     total_premium = sum(route['cargo']['Premium'] for route in chain)
     total_distance = sum(route['total_distance'] for route in chain)
 
+    # Calculate time span for this truck
+    if chain:
+        start_time = min(route['pickup_time'] for route in chain)
+        end_time = max(route['delivery_time'] for route in chain)
+        time_span = (end_time - start_time).days
+    else:
+        time_span = 0
+
     # Show truck info with profit metrics
     st.write(
         f"**Type:** {truck['truck type']} • **Speed:** {truck['avg moving speed, km/h']} km/h • "
@@ -205,7 +353,7 @@ def display_truck_route(truck_idx, chain, trucks_df):
     # Show profit summary
     st.write(
         f"**Total Profit:** €{total_profit:.2f} • **Total Premium:** €{total_premium:.2f} • "
-        f"**Total Distance:** {total_distance:.1f} km"
+        f"**Total Distance:** {total_distance:.1f} km • **Operation Span:** {time_span} days"
     )
 
     # Starting position info
@@ -215,108 +363,33 @@ def display_truck_route(truck_idx, chain, trucks_df):
         f"Available from: {pd.to_datetime(truck['Timestamp (dropoff)']).strftime('%Y-%m-%d %H:%M')}"
     )
 
-    # Create a unified task table with all operations in order
-    unified_tasks = []
-
-    # Set starting position for the truck
-    current_position = truck['Address (drop off)']
-    current_coordinates = (truck['Latitude (dropoff)'], truck['Longitude (dropoff)'])
-    current_time = pd.to_datetime(truck['Timestamp (dropoff)'])
-
-    # Process each route in the chain
+    # Create route summary table
+    route_data = []
     for i, route in enumerate(chain, 1):
         cargo = route['cargo']
+        rest_stops_count = len(route.get('rest_stops_to_pickup', [])) + len(route.get('rest_stops_to_delivery', []))
 
-        # 1. Add pickup route as a task
-        from_location = current_position
-        to_location = cargo['Origin']
-
-        pickup_task = {
-            "Task Number": len(unified_tasks) + 1,
-            "Stop Number": i,
-            "Task Type": "Pickup Route",
-            "From Location": from_location,
-            "To Location": to_location,
+        route_data.append({
+            "Stop": i,
             "Cargo Type": cargo['Cargo_Type'],
-            "Distance (km)": f"{route['distance_to_pickup']:.1f}",
-            "Start Time": current_time.strftime('%Y-%m-%d %H:%M'),
-            "End Time": route['pickup_time'].strftime('%Y-%m-%d %H:%M') if not route['rest_stops_to_pickup'] else None,
-            "Duration (h)": f"{route['distance_to_pickup'] / st.session_state.standard_speed:.1f}",
-            "Waiting Time (h)": f"{route['waiting_time']:.1f}" if route['waiting_time'] > 0 else "0.0",
-            "Premium": f"{cargo['Premium']:.2f}",
-            "Profit": f"{route['profit']:.2f}"
-        }
-        unified_tasks.append(pickup_task)
+            "Origin": cargo['Origin'],
+            "Destination": cargo['Delivery_Location'],
+            "Pickup Date": route['pickup_time'].strftime('%Y-%m-%d'),
+            "Pickup Time": route['pickup_time'].strftime('%H:%M'),
+            "Delivery Date": route['delivery_time'].strftime('%Y-%m-%d'),
+            "Delivery Time": route['delivery_time'].strftime('%H:%M'),
+            "Distance (km)": f"{route['total_distance']:.1f}",
+            "Waiting (h)": f"{route['waiting_time']:.1f}",
+            "Rest Stops": rest_stops_count,
+            "Premium (€)": f"{cargo['Premium']:.2f}",
+            "Profit (€)": f"{route['profit']:.2f}"
+        })
 
-        # 2. Add rest stops during pickup route
-        for rest_idx, rest in enumerate(route['rest_stops_to_pickup']):
-            rest_task = {
-                "Task Number": len(unified_tasks) + 1,
-                "Stop Number": i,
-                "Task Type": "Rest Stop (To Pickup)",
-                "From Location": "En Route",
-                "To Location": "En Route",
-                "Cargo Type": cargo['Cargo_Type'],
-                "Distance (km)": "0.0",
-                "Start Time": rest['time'].strftime('%Y-%m-%d %H:%M'),
-                "End Time": (rest['time'] + pd.Timedelta(hours=rest['duration'])).strftime('%Y-%m-%d %H:%M'),
-                "Duration (h)": f"{rest['duration']:.1f}",
-                "Waiting Time (h)": "0.0",
-                "Premium": "",
-                "Profit": ""
-            }
-            unified_tasks.append(rest_task)
-
-        # 3. Add delivery route as a task
-        from_location = cargo['Origin']
-        to_location = cargo['Delivery_Location']
-
-        delivery_task = {
-            "Task Number": len(unified_tasks) + 1,
-            "Stop Number": i,
-            "Task Type": "Delivery Route",
-            "From Location": from_location,
-            "To Location": to_location,
-            "Cargo Type": cargo['Cargo_Type'],
-            "Distance (km)": f"{route['distance_to_delivery']:.1f}",
-            "Start Time": route['pickup_time'].strftime('%Y-%m-%d %H:%M'),
-            "End Time": route['delivery_time'].strftime('%Y-%m-%d %H:%M') if not route[
-                'rest_stops_to_delivery'] else None,
-            "Duration (h)": f"{route['distance_to_delivery'] / st.session_state.standard_speed:.1f}",
-            "Waiting Time (h)": "0.0",
-            "Premium": f"{cargo['Premium']:.2f}",
-            "Profit": f"{route['profit']:.2f}"
-        }
-        unified_tasks.append(delivery_task)
-
-        # 4. Add rest stops during delivery route
-        for rest_idx, rest in enumerate(route['rest_stops_to_delivery']):
-            rest_task = {
-                "Task Number": len(unified_tasks) + 1,
-                "Stop Number": i,
-                "Task Type": "Rest Stop (To Delivery)",
-                "From Location": "En Route",
-                "To Location": "En Route",
-                "Cargo Type": cargo['Cargo_Type'],
-                "Distance (km)": "0.0",
-                "Start Time": rest['time'].strftime('%Y-%m-%d %H:%M'),
-                "End Time": (rest['time'] + pd.Timedelta(hours=rest['duration'])).strftime('%Y-%m-%d %H:%M'),
-                "Duration (h)": f"{rest['duration']:.1f}",
-                "Waiting Time (h)": "0.0",
-                "Premium": "",
-                "Profit": ""
-            }
-            unified_tasks.append(rest_task)
-
-        # Update current position for next route
-        current_position = cargo['Delivery_Location']
-        current_coordinates = (cargo['Delivery_Latitude'], cargo['Delivery_Longitude'])
-        current_time = route['delivery_time']
-
-    # Create unified dataframe and display
-    unified_df = pd.DataFrame(unified_tasks)
-    st.write("### Unified Task Table")
-    st.dataframe(unified_df, use_container_width=True)
+    # Display route summary
+    if route_data:
+        route_df = pd.DataFrame(route_data)
+        st.write("### Route Summary")
+        st.dataframe(route_df, use_container_width=True)
 
     # Add profit breakdown
     st.write("### Profit Breakdown")
@@ -331,93 +404,13 @@ def display_truck_route(truck_idx, chain, trucks_df):
             "Cargo Type": cargo['Cargo_Type'],
             "Premium": f"{cargo['Premium']:.2f}",
             "Distance Cost": f"{breakdown.get('distance_cost', 0):.2f}",
-            "Time Value": f"{breakdown.get('time_cost', 0):.2f}",
+            "Time Cost": f"{breakdown.get('time_cost', 0):.2f}",
             "Total Cost": f"{breakdown.get('total_cost', 0):.2f}",
             "Profit": f"{route['profit']:.2f}"
         })
 
     profit_df = pd.DataFrame(profit_breakdown)
     st.dataframe(profit_df, use_container_width=True)
-
-    # Add a simple profit vs. cost chart
-    st.write("### Profit vs. Cost Analysis")
-
-    try:
-        # Create data for the chart
-        fig, ax = plt.subplots(figsize=(10, 5))
-        stops = list(range(1, len(chain) + 1))
-        premiums = [route['cargo']['Premium'] for route in chain]
-        costs = [route.get('profit_breakdown', {}).get('total_cost', 0) for route in chain]
-        profits = [route['profit'] for route in chain]
-
-        x = np.arange(len(stops))  # the locations for the groups
-        width = 0.25  # the width of the bars
-
-        ax.bar(x - width, premiums, width, label='Premium')
-        ax.bar(x, costs, width, label='Cost')
-        ax.bar(x + width, profits, width, label='Profit')
-
-        ax.set_xticks(x)
-        ax.set_xticklabels([f'Stop {i}' for i in stops])
-        ax.set_ylabel('EUR')
-        ax.set_title(f'Profit Analysis for Truck {truck["truck_id"]}')
-        ax.legend()
-
-        st.pyplot(fig)
-    except Exception as e:
-        if st.session_state.show_debug:
-            st.error(f"Error creating profit chart: {str(e)}")
-        else:
-            st.warning("Could not create profit chart. Enable debug mode for details.")
-
-    # Preserve the original route information in an expander for reference
-    with st.expander("View Original Route Summary"):
-        # Format route data for original view
-        route_data = []
-
-        for i, route in enumerate(chain, 1):
-            rest_stops_count = len(route['rest_stops_to_pickup']) + len(route['rest_stops_to_delivery'])
-            total_rest_duration = sum(
-                stop['duration'] for stop in route['rest_stops_to_pickup'] + route['rest_stops_to_delivery']
-            ) if rest_stops_count > 0 else 0
-
-            # Add pickup route information
-            pickup_info = f"From: {truck['Address (drop off)'] if i == 1 else chain[i - 2]['cargo']['Delivery_Location']}"
-            pickup_info += f" • To: {route['cargo']['Origin']}"
-            pickup_info += f" • Distance: {route['distance_to_pickup']:.1f} km"
-            pickup_info += f" • Rest stops: {len(route['rest_stops_to_pickup'])}"
-
-            # Add delivery route information
-            delivery_info = f"From: {route['cargo']['Origin']}"
-            delivery_info += f" • To: {route['cargo']['Delivery_Location']}"
-            delivery_info += f" • Distance: {route['distance_to_delivery']:.1f} km"
-            delivery_info += f" • Rest stops: {len(route['rest_stops_to_delivery'])}"
-
-            route_data.append({
-                "Stop": i,
-                "Cargo Type": route['cargo']['Cargo_Type'],
-                "Pickup Route": pickup_info,
-                "Delivery Route": delivery_info,
-                "Pickup Location": route['cargo']['Origin'],
-                "Delivery Location": route['cargo']['Delivery_Location'],
-                "Pickup Time": route['pickup_time'].strftime('%Y-%m-%d %H:%M'),
-                "Delivery Time": route['delivery_time'].strftime('%Y-%m-%d %H:%M'),
-                "Total Distance (km)": f"{route['total_distance']:.1f}",
-                "Rest Stops": rest_stops_count,
-                "Rest Duration (h)": f"{total_rest_duration:.1f}" if rest_stops_count > 0 else "-",
-                "Waiting Time (h)": f"{route['waiting_time']:.1f}",
-                "Premium": f"{cargo['Premium']:.2f}",
-                "Profit": f"{route['profit']:.2f}"
-            })
-
-        # Create a dataframe for display
-        route_df = pd.DataFrame(route_data)
-
-        # Simplified table for the main view
-        simplified_view = route_df[['Stop', 'Cargo Type', 'Pickup Location', 'Delivery Location',
-                                    'Pickup Time', 'Delivery Time', 'Total Distance (km)',
-                                    'Waiting Time (h)', 'Premium', 'Profit']]
-        st.dataframe(simplified_view, use_container_width=True)
 
 
 def load_sample_data():
@@ -432,6 +425,8 @@ def load_sample_data():
 
         # Add Premium column if not present in sample data
         if 'Premium' not in cargo_df.columns:
+            st.info("Adding Premium column to sample data...")
+
             # Generate random premiums based on distance
             if 'Distance' in cargo_df.columns:
                 # Use existing Distance column if available
@@ -440,26 +435,47 @@ def load_sample_data():
                 # Calculate distance between origin and delivery
                 distances = []
                 for _, cargo in cargo_df.iterrows():
-                    origin = (cargo['Origin_Latitude'], cargo['Origin_Longitude'])
-                    delivery = (cargo['Delivery_Latitude'], cargo['Delivery_Longitude'])
-                    distance = geodesic(origin, delivery).kilometers
-                    distances.append(distance)
+                    try:
+                        origin = (float(cargo['Origin_Latitude']), float(cargo['Origin_Longitude']))
+                        delivery = (float(cargo['Delivery_Latitude']), float(cargo['Delivery_Longitude']))
+                        distance = geodesic(origin, delivery).kilometers
+                        distances.append(distance)
+                    except Exception as e:
+                        st.warning(f"Error calculating distance for row {cargo.name}: {str(e)}")
+                        distances.append(200)  # Default distance
 
                 # Generate premiums based on distances
                 cargo_df['Premium'] = [dist * np.random.uniform(1.5, 2.5) for dist in distances]
 
-        # Round premium values for cleaner display
-        cargo_df['Premium'] = cargo_df['Premium'].round(2)
+        # Round premium values for cleaner display and ensure they're positive
+        cargo_df['Premium'] = np.abs(cargo_df['Premium'].fillna(300)).round(2)
+
+        # Ensure data types are correct
+        try:
+            trucks_df['Latitude (dropoff)'] = pd.to_numeric(trucks_df['Latitude (dropoff)'], errors='coerce')
+            trucks_df['Longitude (dropoff)'] = pd.to_numeric(trucks_df['Longitude (dropoff)'], errors='coerce')
+            cargo_df['Origin_Latitude'] = pd.to_numeric(cargo_df['Origin_Latitude'], errors='coerce')
+            cargo_df['Origin_Longitude'] = pd.to_numeric(cargo_df['Origin_Longitude'], errors='coerce')
+            cargo_df['Delivery_Latitude'] = pd.to_numeric(cargo_df['Delivery_Latitude'], errors='coerce')
+            cargo_df['Delivery_Longitude'] = pd.to_numeric(cargo_df['Delivery_Longitude'], errors='coerce')
+        except Exception as e:
+            st.warning(f"Warning converting coordinates to numeric: {str(e)}")
 
         return trucks_df, cargo_df
+
+    except FileNotFoundError as e:
+        st.error(f"Sample data files not found: {str(e)}")
+        st.info("Please make sure 'trucks.csv' and 'cargos.csv' are in the same directory as the app.")
+        return None, None
     except Exception as e:
         st.error(f"Error loading sample data: {str(e)}")
+        st.info("Please check the format of your sample data files.")
         return None, None
 
 
 def main():
     st.set_page_config(
-        page_title="Truck-Cargo Profit Maximizer",
+        page_title="Extended Truck-Cargo Profit Maximizer",
         page_icon="🚚",
         layout="wide"
     )
@@ -487,37 +503,16 @@ def main():
         st.session_state.route_chains = {}
     if 'total_profit' not in st.session_state:
         st.session_state.total_profit = 0
-    if 'debug_logs' not in st.session_state:
-        st.session_state.debug_logs = []
     if 'selected_trucks_for_map' not in st.session_state:
         st.session_state.selected_trucks_for_map = []
+    if 'optimization_mode' not in st.session_state:
+        st.session_state.optimization_mode = "Extended"
+
+    # Initialize operation_end_time differently - will be set based on data
     if 'operation_end_time' not in st.session_state:
-        # Default end time is 7 days from now at 18:00
-        st.session_state.operation_end_time = (datetime.now() + timedelta(days=7)).replace(
-            hour=18, minute=0, second=0, microsecond=0)
+        st.session_state.operation_end_time = None
 
-    st.title("🚚 Truck-Cargo Fleet Profit Maximizer")
-
-    # Create a debug logger that captures print statements
-    class StreamlitLogger:
-        def __init__(self):
-            self.logs = []
-            self.original_stdout = sys.stdout
-
-        def write(self, text):
-            self.logs.append(text)
-            self.original_stdout.write(text)
-
-        def flush(self):
-            self.original_stdout.flush()
-
-        def get_logs(self):
-            return ''.join(self.logs)
-
-    # Create logger
-    logger = StreamlitLogger()
-    # Redirect stdout to logger
-    sys.stdout = logger
+    st.title("🚚 Extended Truck-Cargo Fleet Profit Maximizer")
 
     # Add sidebar with file uploaders and options
     with st.sidebar:
@@ -546,6 +541,19 @@ def main():
 
         # Optimization settings
         st.header("⚙️ Settings")
+
+        # Optimization Mode Selection
+        st.subheader("Optimization Mode")
+        st.session_state.optimization_mode = st.selectbox(
+            "Choose Optimization Mode",
+            ["Extended", "Quick"],
+            index=0,
+            help="Extended: Multi-day planning with automatic time horizon detection. Quick: Original single-period optimization."
+        )
+
+        if st.session_state.optimization_mode == "Extended":
+            st.info(
+                "🌟 Extended mode automatically detects the optimal operation period from your cargo data and plans multi-day routes.")
 
         # Distance and timing settings
         st.subheader("Distance & Timing")
@@ -587,41 +595,68 @@ def main():
             min_value=0.1,
             step=0.1,
             format="%.1f",
-            help="Price per hour for time cost calculation (subtracted from total cost)"
+            help="Price per hour for time cost calculation"
         )
 
-        # Operating period settings
-        st.subheader("Operation Period")
-        operation_end_date = st.date_input(
-            "Operation End Date",
-            value=st.session_state.operation_end_time.date(),
-            help="Global end date for all operations"
-        )
+        # Extended settings for Extended mode
+        if st.session_state.optimization_mode == "Extended":
+            st.subheader("Extended Planning Settings")
 
-        end_time_hours = st.slider(
-            "End Time Hour",
-            min_value=0,
-            max_value=23,
-            value=st.session_state.operation_end_time.hour,
-            help="Hour of the day for operation end time"
-        )
+            max_planning_days = st.number_input(
+                "Maximum Planning Horizon (days)",
+                value=60,
+                min_value=7,
+                max_value=365,
+                help="Maximum number of days to plan ahead"
+            )
 
-        end_time_minutes = st.slider(
-            "End Time Minute",
-            min_value=0,
-            max_value=59,
-            value=st.session_state.operation_end_time.minute,
-            help="Minute of the hour for operation end time",
-            step=5
-        )
+            planning_window_days = st.number_input(
+                "Planning Window Size (days)",
+                value=7,
+                min_value=1,
+                max_value=14,
+                help="Size of each planning window for optimization"
+            )
 
-        # Create datetime object for operation end time
-        st.session_state.operation_end_time = datetime.combine(
-            operation_end_date,
-            time(end_time_hours, end_time_minutes)
-        )
+        # Operating period settings (only for Quick mode or manual override)
+        if st.session_state.optimization_mode == "Quick":
+            st.subheader("Operation Period")
 
-        st.write(f"Operations will end at: {st.session_state.operation_end_time.strftime('%Y-%m-%d %H:%M')}")
+            # Set default operation end time
+            if st.session_state.operation_end_time is None:
+                st.session_state.operation_end_time = (datetime.now() + timedelta(days=30)).replace(
+                    hour=18, minute=0, second=0, microsecond=0)
+
+            operation_end_date = st.date_input(
+                "Operation End Date",
+                value=st.session_state.operation_end_time.date(),
+                help="Global end date for all operations"
+            )
+
+            end_time_hours = st.slider(
+                "End Time Hour",
+                min_value=0,
+                max_value=23,
+                value=st.session_state.operation_end_time.hour,
+                help="Hour of the day for operation end time"
+            )
+
+            end_time_minutes = st.slider(
+                "End Time Minute",
+                min_value=0,
+                max_value=59,
+                value=st.session_state.operation_end_time.minute,
+                help="Minute of the hour for operation end time",
+                step=5
+            )
+
+            # Create datetime object for operation end time
+            st.session_state.operation_end_time = datetime.combine(
+                operation_end_date,
+                time(end_time_hours, end_time_minutes)
+            )
+
+            st.write(f"Operations will end at: {st.session_state.operation_end_time.strftime('%Y-%m-%d %H:%M')}")
 
         # Debug option
         st.session_state.show_debug = st.checkbox(
@@ -694,6 +729,35 @@ def main():
                 cargo_df['Premium'] = [dist * np.random.uniform(1.5, 2.5) for dist in distances]
                 cargo_df['Premium'] = cargo_df['Premium'].round(2)
 
+            # Auto-detect operation period for Extended Mode
+            if st.session_state.optimization_mode == "Extended":
+                earliest_cargo, suggested_end = calculate_suggested_operation_period(cargo_df)
+
+                if earliest_cargo and suggested_end:
+                    st.session_state.operation_end_time = suggested_end
+
+                    # Display auto-detected period
+                    with st.expander("🔍 Auto-Detected Operation Period", expanded=True):
+                        col1, col2, col3 = st.columns(3)
+
+                        with col1:
+                            st.metric("Earliest Cargo Available", earliest_cargo.strftime('%Y-%m-%d'))
+                        with col2:
+                            st.metric("Latest Cargo Window Ends",
+                                      pd.to_datetime(cargo_df['Available_To']).max().strftime('%Y-%m-%d'))
+                        with col3:
+                            st.metric("Suggested Operation End", suggested_end.strftime('%Y-%m-%d'))
+
+                        st.info(
+                            f"✅ Extended mode automatically set operation period from {earliest_cargo.strftime('%Y-%m-%d')} to {suggested_end.strftime('%Y-%m-%d')}")
+                else:
+                    st.warning("Could not auto-detect operation period. Using default 30-day period.")
+                    st.session_state.operation_end_time = (datetime.now() + timedelta(days=30)).replace(
+                        hour=18, minute=0, second=0, microsecond=0)
+
+            # Display time horizon analysis
+            display_time_horizon_analysis(cargo_df)
+
             # Add selection filters in sidebar
             with st.sidebar:
                 st.header("🎯 Filter Selection")
@@ -727,7 +791,7 @@ def main():
                 st.subheader("Select Cargo")
                 cargo_filter_method = st.radio(
                     "Cargo Filter Method",
-                    ["All Cargo", "Select by Type", "Select by Location"],
+                    ["All Cargo", "Select by Type", "Select by Location", "Select by Time Period"],
                     key="cargo_filter"
                 )
 
@@ -755,6 +819,28 @@ def main():
                         cargo_df['Origin'].isin(selected_origins) &
                         cargo_df['Delivery_Location'].isin(selected_destinations)
                         ]
+                elif cargo_filter_method == "Select by Time Period":
+                    # Time period selection
+                    cargo_df['Available_From'] = pd.to_datetime(cargo_df['Available_From'])
+                    cargo_df['Available_To'] = pd.to_datetime(cargo_df['Available_To'])
+
+                    min_date = cargo_df['Available_From'].min().date()
+                    max_date = cargo_df['Available_To'].max().date()
+
+                    selected_date_range = st.date_input(
+                        "Select Date Range",
+                        value=(min_date, max_date),
+                        min_value=min_date,
+                        max_value=max_date
+                    )
+
+                    if len(selected_date_range) == 2:
+                        start_date, end_date = selected_date_range
+                        # Filter cargo that overlaps with selected date range
+                        filtered_cargo_df = cargo_df[
+                            (cargo_df['Available_From'].dt.date <= end_date) &
+                            (cargo_df['Available_To'].dt.date >= start_date)
+                            ]
 
                 st.markdown("---")
 
@@ -763,15 +849,10 @@ def main():
                 col1, col2 = st.columns(2)
                 with col1:
                     st.subheader(f"Selected Trucks ({len(filtered_trucks_df)} total)")
-                    st.dataframe(filtered_trucks_df)
+                    st.dataframe(filtered_trucks_df.head())
                 with col2:
                     st.subheader(f"Selected Cargo ({len(filtered_cargo_df)} total)")
-                    # Show Premium column
-                    if 'Premium' in filtered_cargo_df.columns:
-                        st.dataframe(filtered_cargo_df)
-                    else:
-                        st.dataframe(filtered_cargo_df)
-                        st.warning("No Premium column found in cargo data.")
+                    st.dataframe(filtered_cargo_df.head())
 
             # Proceed with optimization only if there are trucks and cargo
             if len(filtered_trucks_df) == 0:
@@ -782,44 +863,62 @@ def main():
                 st.error("No cargo selected! Please adjust your cargo filters.")
                 return
 
-            # Check if user clicked "Maximize Fleet Profit" or if routes already exist
-            calculate_routes = st.button("Maximize Fleet Profit")
+            # Optimization button with mode-specific text
+            if st.session_state.optimization_mode == "Extended":
+                button_text = "🚀 Maximize Fleet Profit (Extended)"
+                button_help = "Run extended optimization with multi-day planning across the detected time horizon"
+            else:
+                button_text = "⚡ Maximize Fleet Profit (Quick)"
+                button_help = "Run quick optimization for the specified time period"
+
+            calculate_routes = st.button(button_text, help=button_help)
 
             if calculate_routes or not st.session_state.route_chains:
                 try:
-                    # Initialize the profit optimizer with settings from session state
-                    optimizer = FleetProfitOptimizer(
-                        max_distance_km=st.session_state.max_distance,
-                        max_waiting_hours=st.session_state.max_waiting_hours,
-                        price_per_km=st.session_state.price_per_km,
-                        price_per_hour=st.session_state.price_per_hour,
-                        standard_speed_kmh=st.session_state.standard_speed
-                    )
-
-                    # Clear the debug logs before optimization
-                    logger.logs = []
-
-                    with st.spinner('Maximizing fleet profit...'):
-                        # Optimize fleet profit
-                        route_chains, total_profit, rejection_stats, rejection_summary = optimizer.optimize_fleet_profit(
-                            filtered_trucks_df,
-                            filtered_cargo_df,
-                            st.session_state.operation_end_time
+                    if st.session_state.optimization_mode == "Extended":
+                        # Use Extended Optimizer
+                        optimizer = ExtendedFleetProfitOptimizer(
+                            max_distance_km=st.session_state.max_distance,
+                            max_waiting_hours=st.session_state.max_waiting_hours,
+                            price_per_km=st.session_state.price_per_km,
+                            price_per_hour=st.session_state.price_per_hour,
+                            standard_speed_kmh=st.session_state.standard_speed,
+                            max_planning_days=max_planning_days,
+                            planning_window_days=planning_window_days
                         )
 
-                        # Store in session state
-                        st.session_state.route_chains = route_chains
-                        st.session_state.total_profit = total_profit
-                        st.session_state.rejection_stats = rejection_stats
-                        st.session_state.rejection_summary = rejection_summary
-                        st.session_state.debug_logs = logger.logs
+                        with st.spinner('🚀 Running extended optimization across time horizon...'):
+                            route_chains, total_profit, rejection_stats, rejection_summary = optimizer.optimize_fleet_profit_extended(
+                                filtered_trucks_df,
+                                filtered_cargo_df
+                            )
+                    else:
+                        # Use Quick Optimizer
+                        optimizer = FleetProfitOptimizer(
+                            max_distance_km=st.session_state.max_distance,
+                            max_waiting_hours=st.session_state.max_waiting_hours,
+                            price_per_km=st.session_state.price_per_km,
+                            price_per_hour=st.session_state.price_per_hour,
+                            standard_speed_kmh=st.session_state.standard_speed
+                        )
+
+                        with st.spinner('⚡ Running quick optimization...'):
+                            route_chains, total_profit, rejection_stats, rejection_summary = optimizer.optimize_fleet_profit(
+                                filtered_trucks_df,
+                                filtered_cargo_df,
+                                st.session_state.operation_end_time
+                            )
+
+                    # Store in session state
+                    st.session_state.route_chains = route_chains
+                    st.session_state.total_profit = total_profit
+                    st.session_state.rejection_stats = rejection_stats
+                    st.session_state.rejection_summary = rejection_summary
 
                 except Exception as e:
                     st.error(f"Error during profit optimization: {str(e)}")
                     if st.session_state.show_debug:
                         st.exception(e)
-                        # Show logs for debugging
-                        st.text_area("Debug Logs", ''.join(logger.logs), height=400)
                     st.info("Please check your input data and try again.")
                     return
             else:
@@ -830,14 +929,8 @@ def main():
                 rejection_summary = st.session_state.rejection_summary if 'rejection_summary' in st.session_state else {}
 
             if route_chains:
-                # Display results using the display_route_results function
+                # Display results using the enhanced display function
                 display_route_results(route_chains, filtered_trucks_df)
-
-                # Add debug log display if debug mode is enabled
-                if st.session_state.show_debug and hasattr(st.session_state,
-                                                           'debug_logs') and st.session_state.debug_logs:
-                    with st.expander("🔍 Debug Logs"):
-                        st.text_area("Optimization Logs", ''.join(st.session_state.debug_logs), height=400)
 
                 # Truck selection for map visualization
                 st.header("🗺️ Route Visualization")
@@ -884,135 +977,116 @@ def main():
                 export_button = st.download_button(
                     label="📥 Download Route Summary (CSV)",
                     data=generate_route_summary_csv(route_chains, filtered_trucks_df),
-                    file_name="profit_route_summary.csv",
+                    file_name=f"extended_route_summary_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv"
                 )
 
             else:
                 st.warning(
-                    "No valid routes found with the current selection. Try adjusting your filters or increasing the maximum distance setting."
+                    "No valid routes found with the current selection. Try adjusting your filters or settings."
                 )
 
-                # Display debug information about rejected assignments
+                # Display enhanced debug information
                 if 'rejection_summary' in st.session_state and st.session_state.rejection_summary:
-                    with st.expander("📊 Diagnosis Information (Why no routes were found)"):
+                    with st.expander("📊 Comprehensive Diagnosis (Why no routes were found)", expanded=True):
                         rejection_summary = st.session_state.rejection_summary
 
-                        st.subheader("Assignment Statistics")
-                        st.write(f"Total cargo items: {rejection_summary['total_cargo']}")
-                        st.write(f"Assigned cargo items: {rejection_summary['total_assigned']}")
-                        st.write(f"Rejected cargo items: {rejection_summary['total_rejected']}")
-                        st.write(f"Assignment rate: {rejection_summary['assignment_rate'] * 100:.1f}%")
+                        # Enhanced assignment statistics
+                        st.subheader("📈 Assignment Statistics")
+                        col1, col2, col3, col4 = st.columns(4)
 
-                        st.subheader("Rejection Reasons Breakdown")
+                        with col1:
+                            st.metric("Total Cargo", rejection_summary['total_cargo'])
+                        with col2:
+                            st.metric("Assigned", rejection_summary['total_assigned'])
+                        with col3:
+                            st.metric("Rejected", rejection_summary['total_rejected'])
+                        with col4:
+                            st.metric("Success Rate", f"{rejection_summary['assignment_rate'] * 100:.1f}%")
+
+                        # Time horizon analysis for failures
+                        if st.session_state.optimization_mode == "Extended":
+                            st.subheader("⏰ Time Horizon Analysis")
+                            time_analysis = analyze_time_distribution(filtered_cargo_df)
+                            if time_analysis:
+                                st.write(f"**Cargo Time Span**: {time_analysis['total_span_days']} days")
+                                st.write(
+                                    f"**Operation End Time**: {st.session_state.operation_end_time.strftime('%Y-%m-%d %H:%M')}")
+
+                                cargo_end = time_analysis['latest']
+                                if st.session_state.operation_end_time and cargo_end > st.session_state.operation_end_time:
+                                    st.error(f"⚠️ Some cargo availability extends beyond operation end time!")
+                                    st.write(f"Latest cargo ends: {cargo_end.strftime('%Y-%m-%d')}")
+                                    st.write(
+                                        f"Operation ends: {st.session_state.operation_end_time.strftime('%Y-%m-%d')}")
+
+                        # Enhanced rejection analysis
+                        st.subheader("🔍 Rejection Reasons Breakdown")
                         if rejection_summary['by_reason']:
                             reasons_df = pd.DataFrame({
                                 'Reason': list(rejection_summary['by_reason'].keys()),
-                                'Count': list(rejection_summary['by_reason'].values())
+                                'Count': list(rejection_summary['by_reason'].values()),
+                                'Percentage': [count / rejection_summary['total_rejected'] * 100
+                                               for count in rejection_summary['by_reason'].values()]
                             }).sort_values('Count', ascending=False)
 
-                            st.bar_chart(reasons_df.set_index('Reason'))
-
-                            # Display detailed reasons
                             st.dataframe(reasons_df)
-                        else:
-                            st.write("No specific rejection reasons found.")
+                            st.bar_chart(reasons_df.set_index('Reason')['Count'])
 
-                        if rejection_summary['cargo_with_no_truck']:
-                            st.subheader("Cargo with No Compatible Trucks")
-                            st.write(
-                                f"Number of cargo items with no compatible trucks: {len(rejection_summary['cargo_with_no_truck'])}")
-
-                        # Detailed rejection stats for each cargo
-                        st.subheader("Detailed Rejection Statistics")
-                        if st.checkbox("Show detailed rejection statistics for each cargo"):
-                            for cargo_idx, stats in st.session_state.rejection_stats.items():
-                                if cargo_idx not in st.session_state.route_chains.keys() and stats['reasons']:
-                                    cargo = stats['cargo']
-                                    st.write(
-                                        f"Cargo at {cargo['Origin']} to {cargo['Delivery_Location']} (Type: {cargo['Cargo_Type']})")
-
-                                    st.write(f"Attempted with {len(set(stats['attempted_trucks']))} trucks")
-                                    st.write("Sample rejection reasons:")
-                                    for i, reason in enumerate(stats['reasons'][:5]):  # Show only first 5 reasons
-                                        st.write(f"  {i + 1}. Truck {reason['truck_id']}: {reason['reason']}")
-                                    st.write("---")
-
-                        # Show full debug logs if debug mode is enabled
-                        if st.session_state.show_debug and hasattr(st.session_state,
-                                                                   'debug_logs') and st.session_state.debug_logs:
-                            st.subheader("Debug Logs")
-                            st.text_area("Full Optimization Logs", ''.join(st.session_state.debug_logs), height=400)
-
-                        # Suggest solutions
-                        st.subheader("Suggested Solutions")
+                        # Enhanced recommendations
+                        st.subheader("💡 Smart Recommendations")
 
                         most_common_reasons = sorted(rejection_summary['by_reason'].items(),
                                                      key=lambda x: x[1], reverse=True)
 
                         if most_common_reasons:
-                            top_reason, _ = most_common_reasons[0]
+                            top_reason, count = most_common_reasons[0]
+                            percentage = count / rejection_summary['total_rejected'] * 100
+
+                            st.write(f"**Primary Issue:** {top_reason} ({percentage:.1f}% of rejections)")
 
                             if "Distance" in top_reason:
-                                st.write("📏 Most rejections are due to distance constraints. Try these solutions:")
-                                st.write("1. Increase the Maximum Distance parameter in the sidebar")
-                                st.write("2. Filter cargo to locations closer to truck starting positions")
-                                st.write("3. Add more trucks in different locations")
-
-                            elif "Type mismatch" in top_reason:
-                                st.write(
-                                    "🔄 Most rejections are due to truck-cargo type mismatches. Try these solutions:")
-                                st.write("1. Make sure you have trucks of the same types as your cargo")
-                                st.write("2. Filter to show only matching truck and cargo types")
-
-                            elif "Waiting time" in top_reason:
-                                st.write("⏱️ Most rejections are due to waiting time constraints. Try these solutions:")
-                                st.write("1. Increase the Maximum Waiting Hours parameter in the sidebar")
-                                st.write("2. Filter cargo with time windows closer to truck availability times")
-
-                            elif "after cargo window ends" in top_reason:
-                                st.write(
-                                    "🕒 Most rejections are because trucks arrive after cargo availability window. Try these solutions:")
-                                st.write("1. Filter cargo with later time windows")
-                                st.write("2. Use trucks that are available earlier")
+                                st.info("📏 **Distance Solutions:**")
+                                st.write("1. Increase Maximum Distance parameter")
+                                st.write(f"2. Current limit: {st.session_state.max_distance} km")
+                                st.write("3. Consider regional clustering of trucks")
 
                             elif "operation end time" in top_reason:
-                                st.write(
-                                    "⏳ Most rejections are because deliveries would complete after operation end time. Try these solutions:")
-                                st.write("1. Extend the Operation End Time in the sidebar")
-                                st.write("2. Filter to cargo with earlier availability times")
+                                st.info("⏳ **Time Horizon Solutions:**")
+                                if st.session_state.optimization_mode == "Extended":
+                                    st.write("1. Extended mode should auto-handle this - check data quality")
+                                    st.write("2. Verify cargo time windows are reasonable")
+                                else:
+                                    st.write("1. Switch to Extended optimization mode")
+                                    st.write("2. Or extend Operation End Time manually")
+
+                            elif "Type mismatch" in top_reason:
+                                st.info("🔄 **Type Compatibility Solutions:**")
+                                st.write("1. Check truck and cargo type compatibility")
+                                st.write("2. Use type filters to match available combinations")
 
                             elif "Unprofitable" in top_reason:
-                                st.write(
-                                    "💰 Most rejections are because deliveries would be unprofitable. Try these solutions:")
-                                st.write("1. Adjust Price per km or Price per hour in the sidebar")
-                                st.write("2. Filter to cargo with higher Premium values")
+                                st.info("💰 **Profitability Solutions:**")
+                                st.write("1. Check Premium values in cargo data")
+                                st.write("2. Adjust cost parameters (price per km/hour)")
+                                st.write("3. Verify cost calculation is correct")
 
-                            else:
-                                st.write(
-                                    "Try adjusting the parameters in the sidebar to address the rejection reasons above")
+                        # Data quality insights
+                        st.subheader("🔧 Data Quality Check")
 
-                        # Sample diagnostic values
-                        with st.expander("Current parameter values"):
-                            st.write(f"Price per km: {st.session_state.price_per_km} EUR")
-                            st.write(f"Price per hour: {st.session_state.price_per_hour} EUR")
-                            st.write(f"Maximum Distance: {st.session_state.max_distance} km")
-                            st.write(f"Maximum Waiting Hours: {st.session_state.max_waiting_hours} hours")
-                            st.write(f"Standard Speed: {st.session_state.standard_speed} km/h")
-                            st.write(
-                                f"Operation End Time: {st.session_state.operation_end_time.strftime('%Y-%m-%d %H:%M')}")
+                        # Check Premium values
+                        if 'Premium' in filtered_cargo_df.columns:
+                            premium_stats = filtered_cargo_df['Premium'].describe()
+                            if premium_stats['min'] <= 0:
+                                st.warning("⚠️ Some cargo has zero or negative Premium values")
+                            st.write(f"Premium range: €{premium_stats['min']:.2f} - €{premium_stats['max']:.2f}")
 
-                            # Truck types summary
-                            truck_types = filtered_trucks_df['truck type'].value_counts().to_dict()
-                            st.write("Truck types available:")
-                            for t_type, count in truck_types.items():
-                                st.write(f"  - {t_type}: {count} trucks")
-
-                            # Cargo types summary
-                            cargo_types = filtered_cargo_df['Cargo_Type'].value_counts().to_dict()
-                            st.write("Cargo types to deliver:")
-                            for c_type, count in cargo_types.items():
-                                st.write(f"  - {c_type}: {count} items")
+                        # Check time windows
+                        time_analysis = analyze_time_distribution(filtered_cargo_df)
+                        if time_analysis and time_analysis['total_span_days'] > 60:
+                            st.info(f"ℹ️ Long planning horizon detected: {time_analysis['total_span_days']} days")
+                            if st.session_state.optimization_mode == "Quick":
+                                st.write("💡 Consider switching to Extended mode for better handling")
 
         except Exception as e:
             st.error(f"Error processing data: {str(e)}")
@@ -1024,8 +1098,4 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    finally:
-        # Restore original stdout when app exits
-        sys.stdout = sys.__stdout__
+    main()
